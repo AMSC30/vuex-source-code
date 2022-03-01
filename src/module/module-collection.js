@@ -6,12 +6,14 @@ export default class ModuleCollection {
         this.register([], rawRootModule, false)
     }
 
+    // 获取module
     get(path) {
         return path.reduce((module, key) => {
             return module.getChild(key)
         }, this.root)
     }
 
+    // 获取命名空间，忽略namespace为false的module
     getNamespace(path) {
         let module = this.root
         return path.reduce((namespace, key) => {
@@ -23,16 +25,21 @@ export default class ModuleCollection {
     update(rawRootModule) {
         update([], this.root, rawRootModule)
     }
-
+    // 模块注册，path为一个数组
     register(path, rawModule, runtime = true) {
+        // 将模块进行代理，生成一个新的对象
         const newModule = new Module(rawModule, runtime)
+        // 如果没有传路径，注册为根模块
         if (path.length === 0) {
             this.root = newModule
         } else {
+            // 获取到模块的父模块
+            // 不取最后一项
             const parent = this.get(path.slice(0, -1))
+            // 将path最后一项作为新模块的key
             parent.addChild(path[path.length - 1], newModule)
         }
-
+        // 如果模块还有子模块，遍历递归进行注册
         if (rawModule.modules) {
             forEachValue(rawModule.modules, (rawChildModule, key) => {
                 this.register(path.concat(key), rawChildModule, runtime)

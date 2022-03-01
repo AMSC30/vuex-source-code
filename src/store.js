@@ -26,21 +26,24 @@ export class Store {
 
         // store internal state
         this._committing = false
-        this._actions = Object.create(null)
-        this._actionSubscribers = []
-        this._mutations = Object.create(null)
-        // 用来存储用户定义getters - 响应式
-        this._wrappedGetters = Object.create(null)
-        this._modules = new ModuleCollection(options)
+
+        // 用于缓存模块，key为命名空间，值为包装后的module
         this._modulesNamespaceMap = Object.create(null)
+
+        this._wrappedGetters = Object.create(null)
+        this._actions = Object.create(null)
+        this._mutations = Object.create(null)
+
+        // 模块管理器，通过store的_modules进行管理
+        this._modules = new ModuleCollection(options)
+
+        // 订阅器
+        this._actionSubscribers = []
         this._subscribers = []
-        // 响应式$watch
+
+        // vue实例
         this._watcherVM = new Vue()
         this._makeLocalGettersCache = Object.create(null)
-
-        // 面试题 - Object.create(null) 和 {}区别 => 原型链
-        // Object.create(null).__proto__ 为undefined
-        // ({}).__proto__ 是Object.prototype
 
         //  重写，保证方法调用的时候this指向store
         const store = this
@@ -56,16 +59,13 @@ export class Store {
 
         const state = this._modules.root.state
 
+        // 模块安装
         installModule(this, state, [], this._modules.root)
 
         resetStoreVM(this, state)
 
+        // 实例化完成后调用插件，将store作为参数传入
         plugins.forEach(plugin => plugin(this))
-
-        const useDevtools = options.devtools !== undefined ? options.devtools : Vue.config.devtools
-        if (useDevtools) {
-            devtoolPlugin(this)
-        }
     }
 
     get state() {
@@ -263,15 +263,11 @@ function resetStoreVM(store, state, hot) {
 
     // bind store public getters
     store.getters = {}
-    // reset local getters cache
     store._makeLocalGettersCache = Object.create(null)
     const wrappedGetters = store._wrappedGetters
     const computed = {}
     // 面试高频出现
     forEachValue(wrappedGetters, (fn, key) => {
-        // use computed to leverage its lazy-caching mechanism
-        // direct inline function use will lead to closure preserving oldVm.
-        // using partial to return function with only arguments preserved in closure environment.
         computed[key] = partial(fn, store)
         // 遍历地将所有getters桥接上store，并配置成computed属性
         Object.defineProperty(store.getters, key, {
@@ -280,9 +276,6 @@ function resetStoreVM(store, state, hot) {
         })
     })
 
-    // use a Vue instance to store the state tree
-    // suppress warnings just in case the user has added
-    // some funky global mixins
     const silent = Vue.config.silent
     Vue.config.silent = true
     // 利用vue的能力，做响应式
@@ -312,19 +305,25 @@ function resetStoreVM(store, state, hot) {
     }
 }
 
+// installModule(store, state, [], store._modules.root, true)
+
 function installModule(store, rootState, path, module, hot) {
+    // 判断是不是根模块
     const isRoot = !path.length
+
+    // 从层级路径获取命名空间路径字符串,可能是空
     const namespace = store._modules.getNamespace(path)
 
-    // register in namespace map
+    // 1.将模块注册到命名空间，将路径字符串与模块进行映射
     if (module.namespaced) {
+        // 如果注册过，给出警告，但是依然可以注册成功
         if (store._modulesNamespaceMap[namespace] && __DEV__) {
             console.error(`[vuex] duplicate namespace ${namespace} for the namespaced module ${path.join('/')}`)
         }
         store._modulesNamespaceMap[namespace] = module
     }
 
-    // set state
+    // 2.对module中的state做响应式处理
     if (!isRoot && !hot) {
         const parentState = getNestedState(rootState, path.slice(0, -1))
         const moduleName = path[path.length - 1]
@@ -334,10 +333,12 @@ function installModule(store, rootState, path, module, hot) {
                     console.warn(`[vuex] state field "${moduleName}" was overridden by a module with the same name at "${path.join('.')}"`)
                 }
             }
+            // 响应式处理
             Vue.set(parentState, moduleName, module.state)
         })
     }
 
+    // 3.设置module的命名空间
     const local = (module.context = makeLocalContext(store, namespace, path))
 
     module.forEachMutation((mutation, key) => {
@@ -346,6 +347,11 @@ function installModule(store, rootState, path, module, hot) {
     })
 
     module.forEachAction((action, key) => {
+        // action:{
+        // a:{
+        // root:true,
+        // handler:()=>{}}
+        //  }这种写法
         const type = action.root ? key : namespace + key
         const handler = action.handler || action
         registerAction(store, type, handler, local)
@@ -356,15 +362,12 @@ function installModule(store, rootState, path, module, hot) {
         registerGetter(store, namespacedType, getter, local)
     })
 
+    // 递归安装所有子模块
     module.forEachChild((child, key) => {
         installModule(store, rootState, path.concat(key), child, hot)
     })
 }
 
-/**
- * make localized dispatch, commit, getters and state
- * if there is no namespace, just use root ones
- */
 function makeLocalContext(store, namespace, path) {
     const noNamespace = namespace === ''
 
@@ -372,6 +375,7 @@ function makeLocalContext(store, namespace, path) {
         dispatch: noNamespace
             ? store.dispatch
             : (_type, _payload, _options) => {
+                  // 参数处理
                   const args = unifyObjectStyle(_type, _payload, _options)
                   const { payload, options } = args
                   let { type } = args
@@ -406,8 +410,6 @@ function makeLocalContext(store, namespace, path) {
               }
     }
 
-    // getters and state object must be gotten lazily
-    // because they will be changed by vm update
     Object.defineProperties(local, {
         getters: {
             get: noNamespace ? () => store.getters : () => makeLocalGetters(store, namespace)
@@ -500,7 +502,7 @@ function registerGetter(store, type, rawGetter, local) {
 
 function enableStrictMode(store) {
     store._vm.$watch(
-        function () {
+        function() {
             return this._data.$$state
         },
         () => {

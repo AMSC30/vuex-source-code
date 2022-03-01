@@ -11,27 +11,32 @@ export default class Module {
 
         this.state = (typeof rawState === 'function' ? rawState() : rawState) || {}
     }
-
+    // 查看是否是命名空间的module
     get namespaced() {
         return !!this._rawModule.namespaced
     }
 
+    // 添加子module
     addChild(key, module) {
         this._children[key] = module
     }
 
+    // 删除子module
     removeChild(key) {
         delete this._children[key]
     }
 
+    // 根据key获取module
     getChild(key) {
         return this._children[key]
     }
 
+    // 查询是否有该key的子module
     hasChild(key) {
         return key in this._children
     }
 
+    // 更新module，替换源module上的除state外的配置
     update(rawModule) {
         this._rawModule.namespaced = rawModule.namespaced
         if (rawModule.actions) {
@@ -44,7 +49,7 @@ export default class Module {
             this._rawModule.getters = rawModule.getters
         }
     }
-
+    // 将子模块进行遍历，fn接收模块的key和对应的module
     forEachChild(fn) {
         forEachValue(this._children, fn)
     }
