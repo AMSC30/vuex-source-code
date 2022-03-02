@@ -10,7 +10,7 @@
 
 <script>
 import { mapGetters, mapActions } from "vuex";
-
+import Vue from "vue";
 export default {
     computed: mapGetters(["evenOrOdd"]),
     methods: mapActions([
@@ -19,5 +19,8 @@ export default {
         "incrementIfOdd",
         "incrementAsync",
     ]),
+    created() {
+        console.log(this.$store);
+    },
 };
 </script>

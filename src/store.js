@@ -71,7 +71,7 @@ export class Store {
     get state() {
         return this._vm._data.$$state
     }
-
+    // 拦截
     set state(v) {
         if (__DEV__) {
             assert(false, `use store.replaceState() to explicit replace store state.`)
@@ -79,7 +79,6 @@ export class Store {
     }
 
     commit(_type, _payload, _options) {
-        // check object-style commit
         const { type, payload, options } = unifyObjectStyle(_type, _payload, _options)
 
         const mutation = { type, payload }
@@ -96,13 +95,7 @@ export class Store {
             })
         })
 
-        this._subscribers
-            .slice() // shallow copy to prevent iterator invalidation if subscriber synchronously calls unsubscribe
-            .forEach(sub => sub(mutation, this.state))
-
-        if (__DEV__ && options && options.silent) {
-            console.warn(`[vuex] mutation type: ${type}. Silent option has been removed. ` + 'Use the filter functionality in the vue-devtools')
-        }
+        this._subscribers.slice().forEach(sub => sub(mutation, this.state))
     }
 
     dispatch(_type, _payload) {
@@ -120,7 +113,7 @@ export class Store {
 
         try {
             this._actionSubscribers
-                .slice() // shallow copy to prevent iterator invalidation if subscriber synchronously calls unsubscribe
+                .slice()
                 .filter(sub => sub.before)
                 .forEach(sub => sub.before(action, this.state))
         } catch (e) {
@@ -192,7 +185,6 @@ export class Store {
 
         this._modules.register(path, rawModule)
         installModule(this, this.state, path, this._modules.get(path), options.preserveState)
-        // reset store to update getters...
         resetStoreVM(this, this.state)
     }
 
@@ -261,11 +253,11 @@ function resetStore(store, hot) {
 function resetStoreVM(store, state, hot) {
     const oldVm = store._vm
 
-    // bind store public getters
     store.getters = {}
     store._makeLocalGettersCache = Object.create(null)
     const wrappedGetters = store._wrappedGetters
     const computed = {}
+
     // 面试高频出现
     forEachValue(wrappedGetters, (fn, key) => {
         computed[key] = partial(fn, store)
@@ -276,8 +268,6 @@ function resetStoreVM(store, state, hot) {
         })
     })
 
-    const silent = Vue.config.silent
-    Vue.config.silent = true
     // 利用vue的能力，做响应式
     store._vm = new Vue({
         data: {
@@ -285,18 +275,10 @@ function resetStoreVM(store, state, hot) {
         },
         computed
     })
-    Vue.config.silent = silent
-
-    // enable strict mode for new vm
-    if (store.strict) {
-        enableStrictMode(store)
-    }
 
     // 销毁
     if (oldVm) {
         if (hot) {
-            // dispatch changes in all subscribed watchers
-            // to force getter re-evaluation for hot reloading.
             store._withCommit(() => {
                 oldVm._data.$$state = null
             })
@@ -314,38 +296,33 @@ function installModule(store, rootState, path, module, hot) {
     // 从层级路径获取命名空间路径字符串,可能是空
     const namespace = store._modules.getNamespace(path)
 
-    // 1.将模块注册到命名空间，将路径字符串与模块进行映射
+    // 1.将有命名空间的模块缓存起来
+    // TODO 为什么要将其缓存起来
     if (module.namespaced) {
-        // 如果注册过，给出警告，但是依然可以注册成功
-        if (store._modulesNamespaceMap[namespace] && __DEV__) {
-            console.error(`[vuex] duplicate namespace ${namespace} for the namespaced module ${path.join('/')}`)
-        }
         store._modulesNamespaceMap[namespace] = module
     }
 
-    // 2.对module中的state做响应式处理
+    // 2.对module中的state做响应式处理并根据模块结构生成state树
     if (!isRoot && !hot) {
         const parentState = getNestedState(rootState, path.slice(0, -1))
         const moduleName = path[path.length - 1]
         store._withCommit(() => {
-            if (__DEV__) {
-                if (moduleName in parentState) {
-                    console.warn(`[vuex] state field "${moduleName}" was overridden by a module with the same name at "${path.join('.')}"`)
-                }
-            }
-            // 响应式处理
+            // 所以可以通过store.state.user.a进行访问
             Vue.set(parentState, moduleName, module.state)
+            console.log(parentState)
         })
     }
 
-    // 3.设置module的命名空间
+    // 3.生成模块内部store
     const local = (module.context = makeLocalContext(store, namespace, path))
 
+    // 将所有的mutation注册到store的_mutations上面
     module.forEachMutation((mutation, key) => {
         const namespacedType = namespace + key
         registerMutation(store, namespacedType, mutation, local)
     })
 
+    // 将所有的action注册到store的_actions上面
     module.forEachAction((action, key) => {
         // action:{
         // a:{
@@ -469,6 +446,7 @@ function registerAction(store, type, handler, local) {
             },
             payload
         )
+        // action 返回一个promise
         if (!isPromise(res)) {
             res = Promise.resolve(res)
         }
