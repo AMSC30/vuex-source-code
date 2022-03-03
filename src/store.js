@@ -60,6 +60,7 @@ export class Store {
         // 模块安装
         installModule(this, state, [], this._modules.root)
 
+        // 对state做响应式处理，处理getter
         resetStoreVM(this, state)
 
         // 实例化完成后调用插件，将store作为参数传入
@@ -350,7 +351,7 @@ function makeLocalContext(store, namespace, path) {
         dispatch: noNamespace
             ? store.dispatch
             : (_type, _payload, _options) => {
-                  // 参数处理
+                  // 参数序列化
                   const args = unifyObjectStyle(_type, _payload, _options)
                   const { payload, options } = args
                   let { type } = args
