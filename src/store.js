@@ -1,9 +1,8 @@
 import applyMixin from './mixin'
-import devtoolPlugin from './plugins/devtool'
 import ModuleCollection from './module/module-collection'
 import { forEachValue, isObject, isPromise, assert, partial } from './util'
 
-let Vue // bind on install
+let Vue
 
 // 实例对象的描述
 export class Store {
@@ -29,8 +28,6 @@ export class Store {
 
         // 用于缓存模块，key为命名空间，值为包装后的module
         this._modulesNamespaceMap = Object.create(null)
-
-        this._wrappedGetters = Object.create(null)
         this._actions = Object.create(null)
         this._mutations = Object.create(null)
 
@@ -43,6 +40,7 @@ export class Store {
 
         // vue实例
         this._watcherVM = new Vue()
+        this._wrappedGetters = Object.create(null)
         this._makeLocalGettersCache = Object.create(null)
 
         //  重写，保证方法调用的时候this指向store
@@ -302,27 +300,26 @@ function installModule(store, rootState, path, module, hot) {
         store._modulesNamespaceMap[namespace] = module
     }
 
-    // 2.对module中的state做响应式处理并根据模块结构生成state树
+    // 2.处理state，对module中的state做响应式处理并根据模块结构生成state树
     if (!isRoot && !hot) {
         const parentState = getNestedState(rootState, path.slice(0, -1))
         const moduleName = path[path.length - 1]
         store._withCommit(() => {
             // 所以可以通过store.state.user.a进行访问
             Vue.set(parentState, moduleName, module.state)
-            console.log(parentState)
         })
     }
 
-    // 3.生成模块内部store
+    // 3.生成模块本地store，相当于对应用store的代理
     const local = (module.context = makeLocalContext(store, namespace, path))
 
-    // 将所有的mutation注册到store的_mutations上面
+    // 4.处理mutation， 将所有的mutation注册到store的_mutations上面
     module.forEachMutation((mutation, key) => {
         const namespacedType = namespace + key
         registerMutation(store, namespacedType, mutation, local)
     })
 
-    // 将所有的action注册到store的_actions上面
+    // 5.处理action 将所有的action注册到store的_actions上面
     module.forEachAction((action, key) => {
         // action:{
         // a:{
@@ -334,12 +331,13 @@ function installModule(store, rootState, path, module, hot) {
         registerAction(store, type, handler, local)
     })
 
+    // 6.处理getter
     module.forEachGetter((getter, key) => {
         const namespacedType = namespace + key
         registerGetter(store, namespacedType, getter, local)
     })
 
-    // 递归安装所有子模块
+    // 7.递归子模块
     module.forEachChild((child, key) => {
         installModule(store, rootState, path.concat(key), child, hot)
     })
@@ -476,20 +474,6 @@ function registerGetter(store, type, rawGetter, local) {
             store.getters // root getters
         )
     }
-}
-
-function enableStrictMode(store) {
-    store._vm.$watch(
-        function() {
-            return this._data.$$state
-        },
-        () => {
-            if (__DEV__) {
-                assert(store._committing, `do not mutate vuex store state outside mutation handlers.`)
-            }
-        },
-        { deep: true, sync: true }
-    )
 }
 
 function getNestedState(state, path) {

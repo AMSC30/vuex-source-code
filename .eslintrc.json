@@ -5,5 +5,10 @@
   ],
   "globals": {
     "__DEV__": true
+  },
+  "rules": {
+    "indent":"off",
+    "space-before-function-paren":"off",
+    "no-unused-vars":"off"
   }
 }
