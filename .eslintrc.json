@@ -4,11 +4,7 @@
     "plugin:vue-libs/recommended"
   ],
   "globals": {
-    "__DEV__": true
-  },
-  "rules": {
-    "indent":"off",
-    "space-before-function-paren":"off",
-    "no-unused-vars":"off"
+    "__DEV__": true,
+    "__VUE_PROD_DEVTOOLS__": true
   }
 }
