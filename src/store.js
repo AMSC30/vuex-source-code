@@ -15,7 +15,10 @@ export class Store {
         if (__DEV__) {
             // 面试题： vuex自己定义了告警，为啥不用console.assert? - throw Error
             assert(Vue, `must call Vue.use(Vuex) before creating a store instance.`)
-            assert(typeof Promise !== 'undefined', `vuex requires a Promise polyfill in this browser.`)
+            assert(
+                typeof Promise !== 'undefined',
+                `vuex requires a Promise polyfill in this browser.`
+            )
             // 必须要用new操作符调用Store
             assert(this instanceof Store, `store must be called with the new operator.`)
         }
@@ -122,13 +125,18 @@ export class Store {
             }
         }
 
-        const result = entry.length > 1 ? Promise.all(entry.map(handler => handler(payload))) : entry[0](payload)
+        const result =
+            entry.length > 1
+                ? Promise.all(entry.map(handler => handler(payload)))
+                : entry[0](payload)
 
         return new Promise((resolve, reject) => {
             result.then(
                 res => {
                     try {
-                        this._actionSubscribers.filter(sub => sub.after).forEach(sub => sub.after(action, this.state))
+                        this._actionSubscribers
+                            .filter(sub => sub.after)
+                            .forEach(sub => sub.after(action, this.state))
                     } catch (e) {
                         if (__DEV__) {
                             console.warn(`[vuex] error in after action subscribers: `)
@@ -139,7 +147,9 @@ export class Store {
                 },
                 error => {
                     try {
-                        this._actionSubscribers.filter(sub => sub.error).forEach(sub => sub.error(action, this.state, error))
+                        this._actionSubscribers
+                            .filter(sub => sub.error)
+                            .forEach(sub => sub.error(action, this.state, error))
                     } catch (e) {
                         if (__DEV__) {
                             console.warn(`[vuex] error in error action subscribers: `)
@@ -243,9 +253,7 @@ function resetStore(store, hot) {
     store._wrappedGetters = Object.create(null)
     store._modulesNamespaceMap = Object.create(null)
     const state = store.state
-    // init all modules
     installModule(store, state, [], store._modules.root, true)
-    // reset vm
     resetStoreVM(store, state, hot)
 }
 
@@ -286,8 +294,6 @@ function resetStoreVM(store, state, hot) {
     }
 }
 
-// installModule(store, state, [], store._modules.root, true)
-
 function installModule(store, rootState, path, module, hot) {
     // 判断是不是根模块
     const isRoot = !path.length
@@ -296,7 +302,7 @@ function installModule(store, rootState, path, module, hot) {
     const namespace = store._modules.getNamespace(path)
 
     // 1.将有命名空间的模块缓存起来
-    // TODO 为什么要将其缓存起来
+    // 为什么要将其缓存起来，在helper中使用
     if (module.namespaced) {
         store._modulesNamespaceMap[namespace] = module
     }
@@ -359,7 +365,9 @@ function makeLocalContext(store, namespace, path) {
                   if (!options || !options.root) {
                       type = namespace + type
                       if (__DEV__ && !store._actions[type]) {
-                          console.error(`[vuex] unknown local action type: ${args.type}, global type: ${type}`)
+                          console.error(
+                              `[vuex] unknown local action type: ${args.type}, global type: ${type}`
+                          )
                           return
                       }
                   }
@@ -377,7 +385,9 @@ function makeLocalContext(store, namespace, path) {
                   if (!options || !options.root) {
                       type = namespace + type
                       if (__DEV__ && !store._mutations[type]) {
-                          console.error(`[vuex] unknown local mutation type: ${args.type}, global type: ${type}`)
+                          console.error(
+                              `[vuex] unknown local mutation type: ${args.type}, global type: ${type}`
+                          )
                           return
                       }
                   }
