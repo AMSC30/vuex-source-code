@@ -268,7 +268,6 @@ function resetStoreVM(store, state, hot) {
     // 面试高频出现
     forEachValue(wrappedGetters, (fn, key) => {
         computed[key] = partial(fn, store)
-        // 遍历地将所有getters桥接上store，并配置成computed属性
         Object.defineProperty(store.getters, key, {
             get: () => store._vm[key],
             enumerable: true // for local getters
@@ -302,7 +301,6 @@ function installModule(store, rootState, path, module, hot) {
     const namespace = store._modules.getNamespace(path)
 
     // 1.将有命名空间的模块缓存起来
-    // 为什么要将其缓存起来，在helper中使用
     if (module.namespaced) {
         store._modulesNamespaceMap[namespace] = module
     }
@@ -413,15 +411,10 @@ function makeLocalGetters(store, namespace) {
         const gettersProxy = {}
         const splitPos = namespace.length
         Object.keys(store.getters).forEach(type => {
-            // skip if the target getter is not match this namespace
             if (type.slice(0, splitPos) !== namespace) return
 
-            // extract local getter type
             const localType = type.slice(splitPos)
 
-            // Add a port to the getters proxy.
-            // Define as getter property because
-            // we do not want to evaluate the getters in this time.
             Object.defineProperty(gettersProxy, localType, {
                 get: () => store.getters[type],
                 enumerable: true
