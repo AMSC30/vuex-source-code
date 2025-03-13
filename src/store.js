@@ -253,20 +253,28 @@ function resetStore(store, hot) {
 }
 
 function resetStoreVM(store, state, hot) {
-  const oldVm = store._vm
+    const oldVm = store._vm
 
-  store.getters = {}
-  store._makeLocalGettersCache = Object.create(null)
-  const wrappedGetters = store._wrappedGetters
-  const computed = {}
+    store.getters = {}
+    store._makeLocalGettersCache = Object.create(null)
+    const wrappedGetters = store._wrappedGetters
+    const computed = {}
 
-  // 面试高频出现
-  forEachValue(wrappedGetters, (fn, key) => {
-    computed[key] = partial(fn, store)
-    // 遍历地将所有getters桥接上store，并配置成computed属性
-    Object.defineProperty(store.getters, key, {
-      get: () => store._vm[key],
-      enumerable: true // for local getters
+    // 面试高频出现
+    forEachValue(wrappedGetters, (fn, key) => {
+        computed[key] = partial(fn, store)
+        Object.defineProperty(store.getters, key, {
+            get: () => store._vm[key],
+            enumerable: true // for local getters
+        })
+    })
+
+    // 利用vue的能力，做响应式
+    store._vm = new Vue({
+        data: {
+            $$state: state
+        },
+        computed
     })
   })
 
@@ -290,25 +298,57 @@ function resetStoreVM(store, state, hot) {
 }
 
 function installModule(store, rootState, path, module, hot) {
-  // 判断是不是根模块
-  const isRoot = !path.length
+    // 判断是不是根模块
+    const isRoot = !path.length
 
-  // 从层级路径获取命名空间路径字符串,可能是空
-  const namespace = store._modules.getNamespace(path)
+    // 从层级路径获取命名空间路径字符串,可能是空
+    const namespace = store._modules.getNamespace(path)
 
-  // 1.将有命名空间的模块缓存起来
-  // 为什么要将其缓存起来，在helper中使用
-  if (module.namespaced) {
-    store._modulesNamespaceMap[namespace] = module
-  }
+    // 1.将有命名空间的模块缓存起来
+    if (module.namespaced) {
+        store._modulesNamespaceMap[namespace] = module
+    }
 
-  // 2.处理state，对module中的state做响应式处理并根据模块结构生成state树
-  if (!isRoot && !hot) {
-    const parentState = getNestedState(rootState, path.slice(0, -1))
-    const moduleName = path[path.length - 1]
-    store._withCommit(() => {
-      // 所以可以通过store.state.user.a进行访问
-      Vue.set(parentState, moduleName, module.state)
+    // 2.处理state，对module中的state做响应式处理并根据模块结构生成state树
+    if (!isRoot && !hot) {
+        const parentState = getNestedState(rootState, path.slice(0, -1))
+        const moduleName = path[path.length - 1]
+        store._withCommit(() => {
+            // 所以可以通过store.state.user.a进行访问
+            Vue.set(parentState, moduleName, module.state)
+        })
+    }
+
+    // 3.生成模块本地store，相当于对应用store的代理
+    const local = (module.context = makeLocalContext(store, namespace, path))
+
+    // 4.处理mutation， 将所有的mutation注册到store的_mutations上面
+    module.forEachMutation((mutation, key) => {
+        const namespacedType = namespace + key
+        registerMutation(store, namespacedType, mutation, local)
+    })
+
+    // 5.处理action 将所有的action注册到store的_actions上面
+    module.forEachAction((action, key) => {
+        // action:{
+        // a:{
+        // root:true,
+        // handler:()=>{}}
+        //  }这种写法
+        const type = action.root ? key : namespace + key
+        const handler = action.handler || action
+        registerAction(store, type, handler, local)
+    })
+
+    // 6.处理getter
+    module.forEachGetter((getter, key) => {
+        const namespacedType = namespace + key
+        registerGetter(store, namespacedType, getter, local)
+    })
+
+    // 7.递归子模块
+    module.forEachChild((child, key) => {
+        installModule(store, rootState, path.concat(key), child, hot)
     })
   }
 
@@ -402,26 +442,21 @@ function makeLocalContext(store, namespace, path) {
 }
 
 function makeLocalGetters(store, namespace) {
-  if (!store._makeLocalGettersCache[namespace]) {
-    const gettersProxy = {}
-    const splitPos = namespace.length
-    Object.keys(store.getters).forEach(type => {
-      // skip if the target getter is not match this namespace
-      if (type.slice(0, splitPos) !== namespace) return
+    if (!store._makeLocalGettersCache[namespace]) {
+        const gettersProxy = {}
+        const splitPos = namespace.length
+        Object.keys(store.getters).forEach(type => {
+            if (type.slice(0, splitPos) !== namespace) return
 
-      // extract local getter type
-      const localType = type.slice(splitPos)
+            const localType = type.slice(splitPos)
 
-      // Add a port to the getters proxy.
-      // Define as getter property because
-      // we do not want to evaluate the getters in this time.
-      Object.defineProperty(gettersProxy, localType, {
-        get: () => store.getters[type],
-        enumerable: true
-      })
-    })
-    store._makeLocalGettersCache[namespace] = gettersProxy
-  }
+            Object.defineProperty(gettersProxy, localType, {
+                get: () => store.getters[type],
+                enumerable: true
+            })
+        })
+        store._makeLocalGettersCache[namespace] = gettersProxy
+    }
 
   return store._makeLocalGettersCache[namespace]
 }
